@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Clés Info.plist à reporter dans la cible Xcode (onglet Info).
+  Xcode génère déjà le tronc commun ; ci-dessous, uniquement l'utile.
+-->
+<plist version="1.0">
+<dict>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+
+	<!-- Textes affichés par macOS (TCC) lorsque l'app — ou le CLI enfant —
+	     touche pour la première fois un dossier protégé. Sans ces clés, le
+	     système affiche un message générique peu rassurant. -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Claude Companion accède à vos projets situés sur le Bureau pour permettre à Claude Code de lire et modifier leur code.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Claude Companion accède à vos projets situés dans Documents pour permettre à Claude Code de lire et modifier leur code.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Claude Companion accède aux projets situés dans Téléchargements si vous en ouvrez un.</string>
+
+	<!-- Passez à true pour un pur panneau HUD sans icône Dock ni barre de
+	     menus (l'app ne vit alors que par sa fenêtre flottante). -->
+	<key>LSUIElement</key>
+	<false/>
+</dict>
+</plist>

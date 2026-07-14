@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements RECOMMANDÉS — distribution hors App Store (Developer ID).
+
+  App Sandbox volontairement ABSENT : l'app lance le binaire `claude` via
+  Process, et un enfant sandboxé ne pourrait ni écrire ~/.claude ni lire vos
+  projets. Avec Hardened Runtime activé (obligatoire pour la notarisation),
+  AUCUNE entitlement n'est nécessaire pour lancer un processus externe signé
+  ou non — ce fichier est donc volontairement minimal.
+-->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
