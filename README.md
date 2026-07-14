@@ -21,7 +21,7 @@ Positionnez simplement la fenêtre translucide de ClaudeCompanion à côté de v
 
 ## 📸 Captures d'écran
 
-*(Ajoutez vos captures d'écran ici : une vue générale de l'app, un détail sur la coloration syntaxique, et un aperçu du rendu "Liquid Glass" côte à côte avec CodeEdit)*
+https://github.com/user-attachments/assets/7d33ab3f-36fe-458d-9b08-d8e306ba12ba
 
 ## 🏗️ Architecture Technique
 
