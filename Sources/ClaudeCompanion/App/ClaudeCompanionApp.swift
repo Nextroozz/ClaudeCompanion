@@ -72,6 +72,13 @@ struct ClaudeCompanionApp: App {
                     NotificationCenter.default.post(name: .dockToIDERequested, object: nil)
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                // Pas ⌃⌘F : ce raccourci est le plein écran natif du système,
+                // que macOS interdit de partager entre deux apps.
+                Button("Maximiser la paire") {
+                    NotificationCenter.default.post(name: .maximizePairRequested, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             }
         }
     }

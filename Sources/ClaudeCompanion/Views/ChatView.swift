@@ -13,8 +13,15 @@ struct ChatView: View {
                 .fill(Color.white.opacity(0.08))
                 .frame(height: 1)
             messageList
+            if let activity = viewModel.currentActivity {
+                ActivityIndicatorView(activity: activity,
+                                      detail: viewModel.activityDetail,
+                                      showsGame: viewModel.isWaiting)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             InputBarView()
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.currentActivity)
         .frame(minWidth: 380, idealWidth: 440, minHeight: 480, idealHeight: 700)
         // ── L'effet « Liquid Glass » de fond : NSVisualEffectView en
         // .behindWindow. La fenêtre étant transparente (WindowManager), le
@@ -24,13 +31,23 @@ struct ChatView: View {
                 .ignoresSafeArea()
         }
         .background(WindowConfigurator { windowManager.adopt($0) })
+        // Glisser-déposer de fichiers depuis le Finder → pièces jointes.
+        .dropDestination(for: URL.self) { urls, _ in
+            viewModel.addAttachments(urls)
+            return true
+        }
         .overlay(alignment: .top) { errorBanner }
+        .overlay(alignment: .top) { accessibilityBanner }
         .animation(.spring(duration: 0.3), value: viewModel.errorText)
+        .animation(.spring(duration: 0.3), value: windowManager.needsAccessibility)
         .onReceive(NotificationCenter.default.publisher(for: .newSessionRequested)) { _ in
             viewModel.newSession()
         }
         .onReceive(NotificationCenter.default.publisher(for: .dockToIDERequested)) { _ in
-            dockToIDE()
+            windowManager.dockToDefaultTarget()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .maximizePairRequested)) { _ in
+            windowManager.maximizePair()
         }
     }
 
@@ -54,10 +71,11 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
+            // Défilement SANS animation : pendant le streaming, la révision
+            // change plusieurs fois par seconde — empiler des animations de
+            // scroll saturait le thread principal (l'UI semblait figée).
             .onChange(of: viewModel.revision) {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                }
+                proxy.scrollTo("bottom-anchor", anchor: .bottom)
             }
         }
     }
@@ -83,9 +101,46 @@ struct ChatView: View {
 
     // MARK: - Erreurs
 
+    /// L'ancrage tuilé exige la permission Accessibilité : macOS n'affiche son
+    /// alerte qu'UNE fois par app, et ne prévient jamais quand l'utilisateur
+    /// accorde le droit. D'où cette bannière persistante + une revérification
+    /// au retour dans l'app (onAppActivated), seul moment fiable pour la voir
+    /// disparaître.
+    @ViewBuilder
+    private var accessibilityBanner: some View {
+        if windowManager.needsAccessibility {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "lock.shield")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Autorisez l'Accessibilité pour l'ancrage complet")
+                        .font(.callout.weight(.medium))
+                    Text("Sans ce droit, le compagnon se pose à côté de l'IDE sans pouvoir le redimensionner ni le suivre.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button("Ouvrir") { Accessibility.openSettings() }
+                    .buttonStyle(.borderless)
+            }
+            .padding(14)
+            .liquidGlass(in: RoundedRectangle(cornerRadius: 14), tint: .orange)
+            .padding(.horizontal, 16)
+            .padding(.top, 46)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )) { _ in
+                if Accessibility.isTrusted { windowManager.needsAccessibility = false }
+            }
+        }
+    }
+
+    /// Une seule bannière pour les erreurs du CLI et celles de l'ancrage :
+    /// deux bandeaux rouges empilés au même endroit se marcheraient dessus.
     @ViewBuilder
     private var errorBanner: some View {
-        if let errorText = viewModel.errorText {
+        if let errorText = viewModel.errorText ?? windowManager.dockError {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
@@ -96,6 +151,7 @@ struct ChatView: View {
                 Spacer(minLength: 0)
                 Button {
                     viewModel.errorText = nil
+                    windowManager.dockError = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -109,15 +165,10 @@ struct ChatView: View {
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
-
-    private func dockToIDE() {
-        if !windowManager.dockToCodeEdit() {
-            viewModel.errorText = "Fenêtre « \(windowManager.dockTargetAppName) » introuvable à l'écran. Ouvrez l'IDE puis réessayez (⌘⇧D)."
-        }
-    }
 }
 
 extension Notification.Name {
     static let newSessionRequested = Notification.Name("ClaudeCompanion.newSession")
     static let dockToIDERequested = Notification.Name("ClaudeCompanion.dockToIDE")
+    static let maximizePairRequested = Notification.Name("ClaudeCompanion.maximizePair")
 }

@@ -30,9 +30,9 @@ struct UsageView: View {
 
             if let snapshot {
                 VStack(alignment: .leading, spacing: 10) {
+                    periodRow(title: "Session (5 dernières h)", totals: snapshot.lastFiveHours)
                     periodRow(title: "Aujourd'hui", totals: snapshot.today)
-                    periodRow(title: "5 dernières heures", totals: snapshot.lastFiveHours)
-                    periodRow(title: "7 derniers jours", totals: snapshot.lastSevenDays)
+                    periodRow(title: "Semaine (7 jours)", totals: snapshot.lastSevenDays)
                 }
 
                 if !snapshot.todayByModel.isEmpty {
@@ -67,8 +67,7 @@ struct UsageView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .frame(width: 340)
+        // Composant embarqué (dans AccountView) : le parent fournit padding et largeur.
         // .task(id:) relance le calcul quand le périmètre change.
         .task(id: scope) { await reload() }
     }

@@ -12,7 +12,8 @@ struct ChatMessage: Identifiable, Sendable {
         case assistant
     }
 
-    /// Un appel d'outil effectué par Claude (affiché comme une « puce »).
+    /// Un appel d'outil effectué par Claude (affiché comme une « puce »
+    /// cliquable qui déplie l'entrée et la sortie complètes).
     struct ToolCall: Sendable, Equatable {
         enum Status: Sendable, Equatable {
             case running   // l'outil s'exécute
@@ -20,20 +21,28 @@ struct ChatMessage: Identifiable, Sendable {
             case error     // tool_result reçu, is_error == true
         }
 
-        let id: String        // tool_use_id — sert à corréler le résultat
-        let name: String      // "Read", "Bash", "Edit"…
-        let detail: String?   // aperçu de l'input (chemin, commande…)
+        let id: String                    // tool_use_id — corrèle le résultat
+        let name: String                  // "Read", "Bash", "Edit"…
+        var detail: String?               // aperçu une-ligne (chemin, commande…) — affiné en direct
+        var inputDisplay: String? = nil   // entrée complète, mise en forme
+        var inputLanguage: String? = nil  // langage de coloration ("sh", "json")
         var status: Status
+        var output: String? = nil         // texte du tool_result (tronqué)
     }
 
     enum Segment: Sendable, Equatable {
         case text(String)
+        /// Réflexion interne du modèle (bloc thinking) — affichée discrète,
+        /// en direct pendant le streaming, repliable ensuite.
+        case thinking(String)
         case tool(ToolCall)
     }
 
     let id: String
     let role: Role
     var segments: [Segment]
+    /// Noms des fichiers joints par l'utilisateur (affichés en puces).
+    var attachmentNames: [String] = []
     /// Métadonnées du tour (coût, durée) — renseignées par l'événement `result`.
     var meta: TurnMeta?
     /// `true` tant que le message est en cours de génération (spinner UI).
@@ -72,5 +81,21 @@ enum PermissionMode: String, CaseIterable, Identifiable, Sendable {
         case .plan:              return "Plan (lecture seule)"
         case .bypassPermissions: return "Tout autoriser ⚠️"
         }
+    }
+}
+
+/// Niveaux d'effort de raisonnement acceptés par `--effort`.
+enum EffortChoice {
+    static let all: [(value: String?, label: String)] = [
+        (nil,       "Défaut"),
+        ("low",     "Faible"),
+        ("medium",  "Moyen"),
+        ("high",    "Élevé"),
+        ("xhigh",   "Très élevé"),
+        ("max",     "Maximum"),
+    ]
+
+    static func label(for value: String?) -> String? {
+        all.first { $0.value == value }?.label
     }
 }

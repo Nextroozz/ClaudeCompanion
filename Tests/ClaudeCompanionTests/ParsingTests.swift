@@ -91,10 +91,48 @@ final class MarkdownBlockParserTests: XCTestCase {
 final class ClaudeEventDecoderTests: XCTestCase {
 
     func testDecodesInitEvent() {
-        let line = #"{"type":"system","subtype":"init","cwd":"/tmp/demo","session_id":"abc-123","tools":["Bash","Read"],"model":"claude-sonnet-5","permissionMode":"acceptEdits"}"#
+        let line = #"{"type":"system","subtype":"init","cwd":"/tmp/demo","session_id":"abc-123","tools":["Bash","Read"],"model":"claude-sonnet-5","permissionMode":"acceptEdits","slash_commands":["/compact","/init"]}"#
         XCTAssertEqual(
             ClaudeEventDecoder.decode(line: line),
-            [.initialized(sessionID: "abc-123", model: "claude-sonnet-5")]
+            [.initialized(sessionID: "abc-123", model: "claude-sonnet-5",
+                          slashCommands: ["/compact", "/init"])]
+        )
+    }
+
+    /// Ligne CAPTURÉE telle quelle depuis le CLI (Opus 4.8). Les modèles
+    /// actuels chiffrent leur réflexion : `thinking` est vide, le contenu vit
+    /// dans `signature`. Seul `estimated_tokens` est exploitable — d'où un
+    /// événement de progression et AUCUN thinkingDelta.
+    func testEncryptedThinkingYieldsProgressOnly() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"","estimated_tokens":150}}}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: line),
+            [.thinkingProgress(estimatedTokens: 150)]
+        )
+    }
+
+    /// Les modèles qui exposent leur réflexion en clair (Sonnet 4.6 et
+    /// antérieurs) doivent continuer à la streamer, texte ET progression.
+    func testPlainThinkingYieldsBothTextAndProgress() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Voyons voir","estimated_tokens":50}}}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: line),
+            [.thinkingDelta("Voyons voir"), .thinkingProgress(estimatedTokens: 50)]
+        )
+    }
+
+    /// Un delta sans compteur ne doit pas produire de progression à zéro, qui
+    /// ferait clignoter « ~0 tokens ».
+    func testThinkingWithoutTokenCountYieldsNothing() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}}"#
+        XCTAssertEqual(ClaudeEventDecoder.decode(line: line), [])
+    }
+
+    func testDecodesInitEventWithoutSlashCommands() {
+        let line = #"{"type":"system","subtype":"init","session_id":"abc-123","model":"claude-sonnet-5"}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: line),
+            [.initialized(sessionID: "abc-123", model: "claude-sonnet-5", slashCommands: [])]
         )
     }
 
@@ -123,8 +161,35 @@ final class ClaudeEventDecoderTests: XCTestCase {
         let line = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"contenu","is_error":false}]},"session_id":"abc-123"}"#
         XCTAssertEqual(
             ClaudeEventDecoder.decode(line: line),
-            [.toolFinished(toolUseID: "toolu_01", isError: false)]
+            [.toolFinished(toolUseID: "toolu_01", isError: false, output: "contenu")]
         )
+    }
+
+    func testDecodesToolResultWithBlockArrayContent() {
+        let line = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":[{"type":"text","text":"ligne 1"},{"type":"text","text":"ligne 2"}],"is_error":true}]},"session_id":"abc"}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: line),
+            [.toolFinished(toolUseID: "toolu_02", isError: true, output: "ligne 1\nligne 2")]
+        )
+    }
+
+    func testToolInputDisplayFormatting() {
+        let bash = ClaudeEventDecoder.toolInputDisplay(
+            name: "Bash",
+            input: .object(["command": .string("ls -la | head")])
+        )
+        XCTAssertEqual(bash?.text, "ls -la | head")
+        XCTAssertEqual(bash?.language, "sh")
+
+        let read = ClaudeEventDecoder.toolInputDisplay(
+            name: "Read",
+            input: .object(["file_path": .string("/tmp/a.swift"), "limit": .number(50)])
+        )
+        XCTAssertEqual(read?.language, "json")
+        XCTAssertEqual(read?.text, "{\n  \"file_path\": \"/tmp/a.swift\",\n  \"limit\": 50\n}")
+
+        XCTAssertNil(ClaudeEventDecoder.toolInputDisplay(name: "Bash", input: .object([:])),
+                     "un input vide (content_block_start) ne doit rien afficher")
     }
 
     func testDecodesResultEvent() {
@@ -150,14 +215,94 @@ final class ClaudeEventDecoderTests: XCTestCase {
         let tool = #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_02","name":"Bash","input":{}}},"session_id":"abc"}"#
         XCTAssertEqual(
             ClaudeEventDecoder.decode(line: tool),
-            [.toolStarted(id: "toolu_02", name: "Bash", detail: nil)]
+            [.toolStarted(index: 1, id: "toolu_02", name: "Bash", detail: nil)]
         )
+    }
+
+    func testDecodesLiveStreamingEvents() {
+        // L'input d'un outil streamé fragment par fragment (affichage direct).
+        let inputDelta = #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\": \"ls"}},"session_id":"abc"}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: inputDelta),
+            [.toolInputDelta(index: 1, partialJSON: #"{"command": "ls"#)]
+        )
+
+        let thinking = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Je réfléchis"}},"session_id":"abc"}"#
+        XCTAssertEqual(ClaudeEventDecoder.decode(line: thinking), [.thinkingDelta("Je réfléchis")])
+
+        let blockStop = #"{"type":"stream_event","event":{"type":"content_block_stop","index":1},"session_id":"abc"}"#
+        XCTAssertEqual(ClaudeEventDecoder.decode(line: blockStop), [.blockFinished(index: 1)])
+
+        let messageStop = #"{"type":"stream_event","event":{"type":"message_stop"},"session_id":"abc"}"#
+        XCTAssertEqual(ClaudeEventDecoder.decode(line: messageStop), [.messageStopped])
+    }
+
+    func testMapsThinkingBlocks() {
+        let line = #"{"type":"assistant","message":{"id":"msg_03","role":"assistant","content":[{"type":"thinking","thinking":"Voyons voir…"},{"type":"text","text":"OK"}]},"session_id":"abc"}"#
+        XCTAssertEqual(
+            ClaudeEventDecoder.decode(line: line),
+            [.assistantMessage(id: "msg_03", segments: [.thinking("Voyons voir…"), .text("OK")])]
+        )
+    }
+
+    func testWriteInputDisplayShowsFileContentWithLanguage() {
+        let write = ClaudeEventDecoder.toolInputDisplay(
+            name: "Write",
+            input: .object([
+                "file_path": .string("/tmp/App.swift"),
+                "content": .string("let x = 1\n"),
+            ])
+        )
+        XCTAssertEqual(write?.text, "let x = 1\n")
+        XCTAssertEqual(write?.language, "swift")
     }
 
     func testIgnoresUnknownAndMalformedLines() {
         XCTAssertEqual(ClaudeEventDecoder.decode(line: ""), [])
         XCTAssertEqual(ClaudeEventDecoder.decode(line: "pas du json"), [])
         XCTAssertEqual(ClaudeEventDecoder.decode(line: #"{"type":"martien","x":1}"#), [])
+    }
+}
+
+// MARK: - PartialJSON (réparation des inputs streamés)
+
+final class PartialJSONTests: XCTestCase {
+
+    func testParsesCompleteJSON() {
+        let value = PartialJSON.parse(#"{"command": "ls -la"}"#)
+        XCTAssertEqual(value?["command"]?.stringValue, "ls -la")
+    }
+
+    func testClosesUnterminatedString() {
+        let value = PartialJSON.parse(#"{"command": "git sta"#)
+        XCTAssertEqual(value?["command"]?.stringValue, "git sta")
+    }
+
+    func testClosesNestedBracketsAndPreservesEscapes() {
+        let value = PartialJSON.parse(#"{"content": "ligne 1\nligne 2 \"citée"#)
+        XCTAssertEqual(value?["content"]?.stringValue, "ligne 1\nligne 2 \"citée")
+    }
+
+    func testTruncatesIncompleteEscapeSequence() {
+        // Le flux peut couper en plein milieu d'un \uXXXX : on tronque avant.
+        let value = PartialJSON.parse(#"{"content": "fl\u00e"#)
+        XCTAssertEqual(value?["content"]?.stringValue, "fl")
+    }
+
+    func testDropsDanglingKeyAndComma() {
+        XCTAssertEqual(
+            PartialJSON.parse(#"{"file_path": "/tmp/a.txt", "content":"#)?["file_path"]?.stringValue,
+            "/tmp/a.txt"
+        )
+        XCTAssertEqual(
+            PartialJSON.parse(#"{"file_path": "/tmp/a.txt","#)?["file_path"]?.stringValue,
+            "/tmp/a.txt"
+        )
+    }
+
+    func testRejectsNonObjectFragments() {
+        XCTAssertNil(PartialJSON.parse(""))
+        XCTAssertNil(PartialJSON.parse("pas du json"))
     }
 }
 
@@ -197,6 +342,8 @@ final class SessionHistoryTests: XCTestCase {
         if case .tool(let call) = messages[1].segments[1] {
             XCTAssertEqual(call.status, .done, "dans l'historique, les outils sont terminés")
             XCTAssertEqual(call.detail, "ls")
+            XCTAssertEqual(call.output, "a.txt", "la sortie du tool_result doit être rattachée")
+            XCTAssertEqual(call.inputDisplay, "ls", "l'entrée Bash doit être affichable")
         } else {
             XCTFail("second segment attendu : tool_use")
         }

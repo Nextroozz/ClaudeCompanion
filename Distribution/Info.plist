@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist de la cible Xcode. GENERATE_INFOPLIST_FILE = YES est actif :
+  Xcode génère le tronc commun (CFBundle*) et fusionne ces clés par-dessus.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Claude Companion</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 — Compagnon non officiel pour Claude Code.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Claude Companion accède à vos projets situés sur le Bureau pour permettre à Claude Code de lire et modifier leur code.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Claude Companion accède à vos projets situés dans Documents pour permettre à Claude Code de lire et modifier leur code.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Claude Companion accède aux fichiers de Téléchargements que vous joignez ou ouvrez.</string>
+</dict>
+</plist>

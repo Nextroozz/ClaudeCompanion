@@ -103,8 +103,24 @@ enum SessionHistoryService {
         for line in content.split(separator: "\n") {
             guard let data = line.data(using: .utf8),
                   let envelope = try? ClaudeEventDecoder.jsonDecoder.decode(StreamEnvelope.self, from: data),
-                  envelope.isMeta != true, envelope.isSidechain != true
+                  envelope.isSidechain != true
             else { continue }
+
+            // Les tool_result arrivent dans des lignes « user » (parfois
+            // marquées meta) : on les rattache aux appels d'outils déjà
+            // chargés pour que l'inspecteur entrée/sortie fonctionne aussi
+            // sur l'historique.
+            if envelope.type == "user", case .blocks(let blocks)? = envelope.message?.content {
+                for block in blocks where block.type == "tool_result" {
+                    guard let toolUseID = block.toolUseId else { continue }
+                    applyToolResult(id: toolUseID,
+                                    isError: block.isError ?? false,
+                                    output: ClaudeEventDecoder.toolResultText(block.content),
+                                    to: &messages)
+                }
+            }
+
+            guard envelope.isMeta != true else { continue }
 
             switch envelope.type {
             case "user":
@@ -145,6 +161,21 @@ enum SessionHistoryService {
     }
 
     // MARK: - Helpers
+
+    /// Rattache un tool_result à l'appel d'outil correspondant (recherche
+    /// arrière : le résultat suit toujours l'appel).
+    private static func applyToolResult(id: String, isError: Bool, output: String?, to messages: inout [ChatMessage]) {
+        for messageIndex in messages.indices.reversed() {
+            for segmentIndex in messages[messageIndex].segments.indices {
+                if case .tool(var call) = messages[messageIndex].segments[segmentIndex], call.id == id {
+                    call.status = isError ? .error : .done
+                    if let output { call.output = output }
+                    messages[messageIndex].segments[segmentIndex] = .tool(call)
+                    return
+                }
+            }
+        }
+    }
 
     /// Extrait le texte « humain » d'une ligne user (chaîne brute ou blocs texte,
     /// en ignorant les tool_result).
