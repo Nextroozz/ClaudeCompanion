@@ -37,14 +37,24 @@ final class WaitingStateTests: XCTestCase {
         XCTAssertFalse(model.isWaiting)
     }
 
-    /// Le compteur n'a de sens que pendant la réflexion : l'afficher pendant la
-    /// rédaction laisserait croire que le texte coûte ces tokens-là.
-    func testTokenCounterOnlyShowsWhileThinking() {
+    /// Le compteur doit SURVIVRE à la réflexion. Le restreindre au verbe
+    /// « Réfléchit » le rendait invisible : sur une question simple la
+    /// réflexion dure 0,3 s. C'est le bug signalé — « le compteur ne
+    /// fonctionne pas » —, alors que la valeur était juste, mais fugace.
+    func testTokenCounterSurvivesTheThinkingPhase() {
         let model = ChatViewModel()
         model.currentActivity = ChatViewModel.thinkingVerb
         model.applyThinkingProgressForTesting(tokens: 150)
-        XCTAssertEqual(model.activityDetail, "~150 tokens")
+        XCTAssertEqual(model.activityDetail, "~150 tk")
 
+        model.currentActivity = ChatViewModel.activityVerb(forTool: "Bash")
+        XCTAssertEqual(model.activityDetail, "~150 tk",
+                       "combien Claude a réfléchi reste vrai pendant ses outils")
+    }
+
+    /// Sans réflexion, pas de compteur : « ~0 tk » ne dirait rien.
+    func testNoCounterWithoutThinking() {
+        let model = ChatViewModel()
         model.currentActivity = ChatViewModel.writingVerb
         XCTAssertNil(model.activityDetail)
     }
@@ -57,6 +67,32 @@ final class WaitingStateTests: XCTestCase {
         for tokens in [50, 50, 150, 100] {
             model.applyThinkingProgressForTesting(tokens: tokens)
         }
-        XCTAssertEqual(model.activityDetail, "~350 tokens")
+        XCTAssertEqual(model.activityDetail, "~350 tk")
+    }
+}
+
+/// Le chronomètre : « depuis combien de temps ça réfléchit ».
+final class ElapsedFormatTests: XCTestCase {
+
+    func testSecondsBelowAMinute() {
+        let start = Date()
+        XCTAssertEqual(ActivityIndicatorView.elapsed(from: start, to: start), "0s")
+        XCTAssertEqual(ActivityIndicatorView.elapsed(from: start,
+                                                    to: start.addingTimeInterval(12)), "12s")
+    }
+
+    func testMinutesAreZeroPadded() {
+        let start = Date()
+        XCTAssertEqual(ActivityIndicatorView.elapsed(from: start,
+                                                     to: start.addingTimeInterval(65)), "1:05")
+        XCTAssertEqual(ActivityIndicatorView.elapsed(from: start,
+                                                     to: start.addingTimeInterval(125)), "2:05")
+    }
+
+    /// Une horloge qui recule (ajustement NTP) ne doit pas afficher « -3s ».
+    func testClockGoingBackwardsClampsToZero() {
+        let start = Date()
+        XCTAssertEqual(ActivityIndicatorView.elapsed(from: start,
+                                                     to: start.addingTimeInterval(-3)), "0s")
     }
 }

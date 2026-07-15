@@ -16,6 +16,7 @@ struct ChatView: View {
             if let activity = viewModel.currentActivity {
                 ActivityIndicatorView(activity: activity,
                                       detail: viewModel.activityDetail,
+                                      startedAt: viewModel.turnStartedAt,
                                       showsGame: viewModel.isWaiting)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -56,7 +57,15 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                // VStack et NON LazyVStack : le Lazy met en cache la hauteur
+                // d'une ligne à sa première apparition et ne la réévalue pas
+                // quand son contenu grandit. Or c'est précisément ce qui arrive
+                // ici — une bulle s'allonge à chaque delta —, d'où des réponses
+                // longues tronquées, que seul un passage sur une autre session
+                // (qui détruit les vues) réparait. La paresse coûtait plus
+                // qu'elle ne rapportait : un fil de conversation reste court,
+                // et SwiftUI ne recalcule de toute façon que la bulle modifiée.
+                VStack(alignment: .leading, spacing: 16) {
                     if viewModel.messages.isEmpty {
                         emptyState
                     }

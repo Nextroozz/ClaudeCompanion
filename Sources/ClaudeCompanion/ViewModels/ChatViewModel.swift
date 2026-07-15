@@ -54,13 +54,19 @@ final class ChatViewModel: ObservableObject {
     /// — affiché avec animation pendant le streaming.
     @Published var currentActivity: String?
 
-    /// Tokens de réflexion accumulés sur le message assistant en cours.
+    /// Tokens de réflexion accumulés sur TOUT le tour (pas seulement le message
+    /// courant : un tour agentique en enchaîne plusieurs, chacun réfléchissant).
     ///
     /// Les modèles actuels chiffrent le TEXTE de leur réflexion : impossible de
     /// l'afficher au fil de l'eau, il n'est jamais transmis. Ce compteur est le
     /// seul signal vivant pendant une longue réflexion — sans lui, l'interface
     /// reste muette parfois trente secondes.
     @Published private(set) var thinkingTokens = 0
+
+    /// Début du tour, pour le chronomètre. Une Date et non un compteur : la vue
+    /// en déduit l'écoulé à chaque tick, sans que le modèle ait à battre la
+    /// mesure — même raison que le Pong (voir PongWaitingView).
+    @Published private(set) var turnStartedAt: Date?
 
     /// Verbe d'activité pour la réflexion. Constante partagée : `activityDetail`
     /// s'y compare pour n'afficher le compteur QUE pendant la réflexion.
@@ -76,9 +82,15 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Complément affiché à droite du verbe d'activité.
+    ///
+    /// Le compteur RESTE affiché après la réflexion, tant que le tour dure.
+    /// Le restreindre au verbe « Réfléchit » le rendait invisible : sur une
+    /// question simple, la réflexion ne dure que 0,3 s. Or ce qu'on veut
+    /// savoir, c'est combien Claude a réfléchi pour CE tour — l'information
+    /// garde tout son sens pendant qu'il exécute ensuite ses outils.
     var activityDetail: String? {
-        guard currentActivity == Self.thinkingVerb, thinkingTokens > 0 else { return nil }
-        return "~\(thinkingTokens) tokens"
+        guard thinkingTokens > 0 else { return nil }
+        return "~\(thinkingTokens) tk"
     }
 
     @Published var projectDirectory: URL {
@@ -221,6 +233,10 @@ final class ChatViewModel: ObservableObject {
         )
 
         currentActivity = "Démarre"
+        // Remise à zéro par TOUR : les tokens s'additionnent sur tous les
+        // messages du tour, y compris ceux qui suivent un appel d'outil.
+        thinkingTokens = 0
+        turnStartedAt = Date()
 
         // Les deltas peuvent arriver par CENTAINES par seconde : traiter (et
         // donc re-rendre SwiftUI) à chaque événement sature le thread principal
@@ -334,7 +350,6 @@ final class ChatViewModel: ObservableObject {
 
         case .messageStarted(let id):
             toolIDForBlockIndex = [:] // les index de blocs repartent de zéro
-            thinkingTokens = 0        // chaque message a sa propre réflexion
             startDraft(id: id)
 
         case .textDelta(let text):
@@ -537,6 +552,7 @@ final class ChatViewModel: ObservableObject {
         isStreaming = false
         streamTask = nil
         currentActivity = nil
+        turnStartedAt = nil // arrête le chronomètre
         toolIDForBlockIndex = [:]
         toolInputBuffers = [:]
         toolNames = [:]
