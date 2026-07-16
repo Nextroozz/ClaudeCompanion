@@ -8,6 +8,7 @@ struct SkillsView: View {
     @StateObject private var model = SkillsViewModel()
     @State private var tab: Tab = .installed
     @State private var search = ""
+    @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable, Identifiable {
         case installed = "Installés"
@@ -26,6 +27,21 @@ struct SkillsView: View {
             .navigationTitle("Skills")
             .navigationDestination(for: Skill.self) { skill in
                 SkillDetailView(skill: skill, model: model)
+            }
+            .toolbar {
+                // Une sheet macOS n'offre aucune fermeture par défaut : sans ce
+                // bouton (et Échap), le panneau était piégé ouvert.
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction) // Échap ferme aussi
+                    .help("Fermer (Échap)")
+                }
             }
         }
         .frame(width: 460, height: 560)
