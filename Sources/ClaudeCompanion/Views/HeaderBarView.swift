@@ -8,6 +8,7 @@ struct HeaderBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
     @State private var showsFolderPicker = false
     @State private var showsAccount = false
+    @State private var showsSkills = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -41,6 +42,17 @@ struct HeaderBarView: View {
             .help("Nouvelle session (⌘N)")
 
             permissionMenu
+
+            Button {
+                showsSkills.toggle()
+            } label: {
+                Image(systemName: "puzzlepiece.extension")
+            }
+            .buttonStyle(.plain)
+            .help("Skills : découvrir, suggérer et installer")
+            .sheet(isPresented: $showsSkills) {
+                SkillsView(projectDirectory: viewModel.projectDirectory)
+            }
 
             Button {
                 windowManager.isPinned.toggle()
