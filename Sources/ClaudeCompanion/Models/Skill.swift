@@ -25,9 +25,18 @@ struct Skill: Identifiable, Equatable, Hashable, Sendable {
 
     /// Provenance connue, pour le badge de confiance de l'UI.
     enum Origin: Equatable, Hashable, Sendable {
-        case official                  // anthropics/skills — curé
-        case community(repo: String)   // recherche GitHub (phase 2)
-        case local                     // installé, absent des catalogues connus
+        case official                     // anthropics/skills — curé
+        case community(CommunitySource)   // recherche GitHub (phase 2) — NON vérifié
+        case local                        // installé, absent des catalogues connus
+    }
+
+    /// De QUOI installer un skill trouvé sur GitHub : un dépôt quelconque, une
+    /// révision, et le dossier où vit le SKILL.md (racine possible). Le nom
+    /// d'installation, lui, vient du frontmatter, pas du dossier du dépôt.
+    struct CommunitySource: Equatable, Hashable, Sendable {
+        let repo: String        // "owner/name"
+        let ref: String         // branche ou SHA de commit
+        let folderPath: String  // dossier du skill dans le dépôt ; "" = racine
     }
 
     /// Où un skill installé réside — décide s'il est désinstallable (pas les

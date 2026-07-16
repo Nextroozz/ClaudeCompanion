@@ -113,21 +113,58 @@ struct SkillsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Filtrer le catalogue officiel", text: $search)
+                TextField("Filtrer l'officiel · ⏎ pour chercher sur GitHub", text: $search)
                     .textFieldStyle(.plain)
-                if model.isRefreshing { ProgressView().controlSize(.small) }
+                    .onSubmit { Task { await model.search(search) } }
+                if !search.isEmpty {
+                    Button {
+                        search = ""; model.clearSearch()
+                    } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
+                if model.isRefreshing || model.isSearching { ProgressView().controlSize(.small) }
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             Divider()
 
-            if filteredCatalog.isEmpty {
-                emptyState("cloud", model.catalog.isEmpty ? "Catalogue indisponible" : "Aucun résultat",
-                           model.catalog.isEmpty
-                           ? "Vérifiez votre connexion — le catalogue officiel se charge depuis GitHub."
-                           : "Aucun skill ne correspond à « \(search) ».")
-            } else {
-                List(filteredCatalog) { skill in
-                    NavigationLink(value: skill) { SkillRow(skill: skill, model: model) }
+            List {
+                Section("Catalogue officiel") {
+                    if filteredCatalog.isEmpty {
+                        Text(model.catalog.isEmpty
+                             ? "Catalogue indisponible (GitHub injoignable ?)."
+                             : "Aucun skill officiel ne correspond.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(filteredCatalog) { skill in
+                            NavigationLink(value: skill) { SkillRow(skill: skill, model: model) }
+                        }
+                    }
+                }
+
+                // Résultats GitHub : uniquement après une recherche explicite.
+                if !model.searchResults.isEmpty {
+                    Section {
+                        ForEach(model.searchResults) { skill in
+                            NavigationLink(value: skill) { SkillRow(skill: skill, model: model) }
+                        }
+                    } header: {
+                        Label("GitHub — non vérifiés", systemImage: "exclamationmark.shield")
+                            .foregroundStyle(.orange)
+                    } footer: {
+                        Text("Sources tierces : lisez le SKILL.md et vérifiez les scripts avant d'installer.")
+                            .font(.caption2)
+                    }
+                } else if !search.isEmpty && !model.isSearching {
+                    Section {
+                        if model.searchAvailable {
+                            Text("Appuyez sur ⏎ pour chercher « \(search) » sur GitHub.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        } else {
+                            Label("Recherche GitHub indisponible : installez « gh » puis « gh auth login ».",
+                                  systemImage: "info.circle")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }

@@ -1,34 +1,42 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SkillInstaller — poser / retirer un skill
+// SkillInstaller — poser / retirer un skill (officiel OU communautaire)
 //
-// Un skill est un DOSSIER : l'installer, c'est récupérer TOUS ses fichiers
-// (SKILL.md, scripts, ressources), pas seulement le manifeste. On liste l'arbre
-// du dépôt une fois, puis on télécharge chaque fichier via raw (hors quota) en
-// préservant l'arborescence interne du skill.
+// Un skill est un DOSSIER : l'installer récupère TOUS ses fichiers (SKILL.md,
+// scripts, ressources), pas seulement le manifeste. On liste l'arbre du dépôt,
+// on filtre le sous-dossier du skill, puis on télécharge chaque fichier via raw
+// (à la révision exacte prévisualisée). Staging temporaire + déplacement
+// atomique : une install interrompue ne laisse jamais un skill à moitié écrit.
 //
-// Sécurité : un skill peut embarquer des scripts que Claude exécutera. On expose
-// donc `scriptFiles` pour que l'UI prévienne AVANT d'installer, et l'installation
-// reste un geste explicite, par skill, avec choix du périmètre.
+// Sécurité : `officialFiles`/`files(for:)` exposent les scripts embarqués pour
+// que l'UI prévienne AVANT d'installer. Les skills communautaires sont NON
+// vérifiés — l'aperçu et l'alerte scripts sont le garde-fou.
+//
+// Garde-fou taille : un SKILL.md à la RACINE d'un dépôt ferait du dossier tout
+// le dépôt. On borne à `maxFiles` et on refuse au-delà (install manuelle alors).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum SkillInstaller {
 
+    static let maxFiles = 100
+
     enum InstallError: LocalizedError {
         case notInstallable
         case listingFailed
+        case tooManyFiles
         case downloadFailed(String)
         case alreadyExists(String)
         case notRemovable
 
         var errorDescription: String? {
             switch self {
-            case .notInstallable:      return "Ce skill n'est pas installable depuis le catalogue."
-            case .listingFailed:       return "Impossible de lister les fichiers du skill (GitHub injoignable ?)."
+            case .notInstallable:       return "Ce skill n'est pas installable automatiquement."
+            case .listingFailed:        return "Impossible de lister les fichiers du skill (dépôt injoignable ?)."
+            case .tooManyFiles:         return "Ce dépôt contient trop de fichiers pour une install sûre — clonez-le à la main."
             case .downloadFailed(let f): return "Échec du téléchargement de « \(f) »."
             case .alreadyExists(let n): return "Un skill « \(n) » existe déjà à cet emplacement."
-            case .notRemovable:        return "Ce skill est fourni par un plugin : gérez-le via son plugin."
+            case .notRemovable:         return "Ce skill est fourni par un plugin : gérez-le via son plugin."
             }
         }
     }
@@ -38,6 +46,26 @@ enum SkillInstaller {
         let relativePath: String   // "SKILL.md", "scripts/run.py"…
         var isScript: Bool { Self.scriptExtensions.contains((relativePath as NSString).pathExtension.lowercased()) }
         static let scriptExtensions: Set<String> = ["sh", "py", "js", "rb", "pl", "bash", "zsh", "command"]
+    }
+
+    /// Où récupérer un skill distant : dépôt, révision, dossier (racine = "").
+    private struct Remote {
+        let repo: String
+        let ref: String
+        let folderPath: String
+        /// Préfixe à retirer des chemins de l'arbre pour obtenir le relatif.
+        var prefix: String { folderPath.isEmpty ? "" : folderPath + "/" }
+    }
+
+    private static func remote(for skill: Skill) -> Remote? {
+        switch skill.origin {
+        case .official:
+            return Remote(repo: SkillCatalogService.repo, ref: "main", folderPath: "skills/\(skill.name)")
+        case .community(let source):
+            return Remote(repo: source.repo, ref: source.ref, folderPath: source.folderPath)
+        case .local:
+            return nil
+        }
     }
 
     // MARK: - Emplacements
@@ -51,19 +79,21 @@ enum SkillInstaller {
 
     // MARK: - Aperçu (panneau de revue avant install)
 
-    /// Le SKILL.md brut d'un skill officiel — pour l'afficher avant d'installer.
-    static func officialManifest(named name: String) async -> String? {
-        let url = GitHubFetch.rawURL(repo: SkillCatalogService.repo, path: "skills/\(name)/SKILL.md")
-        guard let data = await GitHubFetch.get(url) else { return nil }
+    /// Le SKILL.md brut d'un skill distant, pour l'afficher avant d'installer.
+    static func manifest(for skill: Skill) async -> String? {
+        guard let remote = remote(for: skill) else { return nil }
+        let path = remote.folderPath.isEmpty ? "SKILL.md" : remote.folderPath + "/SKILL.md"
+        guard let data = await GitHubFetch.get(
+            GitHubFetch.rawURL(repo: remote.repo, branch: remote.ref, path: path)
+        ) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    /// Liste des fichiers d'un skill officiel, pour repérer les scripts avant
-    /// installation. Renvoie nil si l'arbre est injoignable.
-    static func officialFiles(named name: String) async -> [SkillFile]? {
-        guard let paths = await officialBlobPaths(named: name) else { return nil }
-        let prefix = "skills/\(name)/"
-        return paths.map { SkillFile(relativePath: String($0.dropFirst(prefix.count))) }
+    /// Fichiers du skill distant, pour repérer les scripts. nil si injoignable.
+    static func files(for skill: Skill) async -> [SkillFile]? {
+        guard let remote = remote(for: skill),
+              let paths = await blobPaths(remote) else { return nil }
+        return paths.map { SkillFile(relativePath: String($0.dropFirst(remote.prefix.count))) }
             .sorted { $0.relativePath < $1.relativePath }
     }
 
@@ -72,7 +102,7 @@ enum SkillInstaller {
     static func install(_ skill: Skill,
                         scope: Skill.InstalledScope,
                         projectDirectory: URL) async throws {
-        guard case .official = skill.origin else { throw InstallError.notInstallable }
+        guard let remote = remote(for: skill) else { throw InstallError.notInstallable }
 
         let root = destinationRoot(scope: scope, projectDirectory: projectDirectory)
         let destination = root.appendingPathComponent(skill.name)
@@ -80,22 +110,22 @@ enum SkillInstaller {
             throw InstallError.alreadyExists(skill.name)
         }
 
-        guard let paths = await officialBlobPaths(named: skill.name), !paths.isEmpty else {
+        guard let paths = await blobPaths(remote), !paths.isEmpty else {
             throw InstallError.listingFailed
         }
+        guard paths.count <= maxFiles else { throw InstallError.tooManyFiles }
 
-        // On télécharge dans un dossier temporaire puis on déplace d'un bloc :
-        // une install interrompue ne laisse jamais un skill à moitié écrit que
-        // le CLI tenterait de charger.
+        // Staging puis move atomique : jamais de skill à moitié écrit sur disque.
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("skill-\(skill.name)-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: staging) }
 
-        let prefix = "skills/\(skill.name)/"
+        let token = GitHubAuth.token() // relève les quotas raw sur dépôts privés
         for path in paths {
-            let relative = String(path.dropFirst(prefix.count))
+            let relative = String(path.dropFirst(remote.prefix.count))
+            guard !relative.isEmpty else { continue }
             guard let data = await GitHubFetch.get(
-                GitHubFetch.rawURL(repo: SkillCatalogService.repo, path: path)
+                GitHubFetch.rawURL(repo: remote.repo, branch: remote.ref, path: path), token: token
             ) else { throw InstallError.downloadFailed(relative) }
 
             let fileURL = staging.appendingPathComponent(relative)
@@ -123,20 +153,20 @@ enum SkillInstaller {
 
     // MARK: - Arbre du dépôt
 
-    /// Chemins des fichiers (blobs) sous `skills/<name>/` dans anthropics/skills.
-    private static func officialBlobPaths(named name: String) async -> [String]? {
+    /// Chemins des fichiers (blobs) du dossier du skill, à la révision voulue.
+    private static func blobPaths(_ remote: Remote) async -> [String]? {
         let url = URL(string:
-            "https://api.github.com/repos/\(SkillCatalogService.repo)/git/trees/main?recursive=1")!
-        guard let data = await GitHubFetch.get(url) else { return nil }
+            "https://api.github.com/repos/\(remote.repo)/git/trees/\(remote.ref)?recursive=1")!
+        guard let data = await GitHubFetch.get(url, token: GitHubAuth.token()) else { return nil }
 
         struct Tree: Decodable {
             struct Node: Decodable { let path: String; let type: String }
             let tree: [Node]
         }
         guard let tree = try? JSONDecoder().decode(Tree.self, from: data) else { return nil }
-        let prefix = "skills/\(name)/"
+        let prefix = remote.prefix
         return tree.tree
-            .filter { $0.type == "blob" && $0.path.hasPrefix(prefix) }
+            .filter { $0.type == "blob" && (prefix.isEmpty || $0.path.hasPrefix(prefix)) }
             .map(\.path)
     }
 }

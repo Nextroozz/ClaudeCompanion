@@ -19,6 +19,12 @@ final class SkillsViewModel: ObservableObject {
     /// Nom du skill dont une install/désinstall est en cours (désactive son bouton).
     @Published var busySkill: String?
 
+    // Recherche GitHub (Phase 2).
+    @Published private(set) var searchResults: [Skill] = []
+    @Published private(set) var isSearching = false
+    /// `gh` présent et connecté ? Sinon la recherche large est indisponible.
+    @Published private(set) var searchAvailable = false
+
     private var projectDirectory = FileManager.default.homeDirectoryForCurrentUser
 
     /// Exposé pour l'aperçu d'un skill installé, lu sur disque par la vue détail.
@@ -48,7 +54,36 @@ final class SkillsViewModel: ObservableObject {
             catalog = merge(fresh)
             recomputeSuggestions()
         }
+
+        // Disponibilité de la recherche GitHub (localise `gh` hors MainActor).
+        searchAvailable = await Task.detached { GitHubAuth.isAvailable }.value
     }
+
+    // MARK: - Recherche GitHub (Phase 2)
+
+    func search(_ query: String) async {
+        let terms = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !terms.isEmpty else { searchResults = []; return }
+        errorText = nil
+        isSearching = true
+        defer { isSearching = false }
+        do {
+            let results = try await SkillSearchService.search(terms)
+            // On marque les résultats déjà installés (dédup par nom).
+            searchResults = results.map { skill in
+                var copy = skill
+                if let scope = installed.first(where: { $0.name == skill.name })?.installed {
+                    copy.installed = scope
+                }
+                return copy
+            }
+        } catch {
+            searchResults = []
+            errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    func clearSearch() { searchResults = [] }
 
     private func rescanLocal() {
         installed = InstalledSkillsService.installedSkills(projectDirectory: projectDirectory)

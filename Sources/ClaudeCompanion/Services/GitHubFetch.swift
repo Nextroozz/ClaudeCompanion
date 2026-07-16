@@ -11,9 +11,13 @@ import Foundation
 enum GitHubFetch {
 
     /// GET brut. Renvoie nil sur tout code ≠ 200 ou erreur réseau.
-    static func get(_ url: URL) async -> Data? {
+    /// `token` (optionnel) authentifie l'appel — requis pour l'API code-search,
+    /// utile ailleurs pour relever les quotas.
+    static func get(_ url: URL, token: String? = nil, accept: String? = nil) async -> Data? {
         var request = URLRequest(url: url)
         request.setValue("ClaudeCompanion", forHTTPHeaderField: "User-Agent")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let accept { request.setValue(accept, forHTTPHeaderField: "Accept") }
         request.timeoutInterval = 20
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }

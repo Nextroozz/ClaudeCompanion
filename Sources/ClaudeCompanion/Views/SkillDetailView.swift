@@ -15,6 +15,14 @@ struct SkillDetailView: View {
     private var scripts: [SkillInstaller.SkillFile] { files.filter(\.isScript) }
     private var isBusy: Bool { model.busySkill == skill.name }
 
+    /// Installable à distance = officiel ou communautaire (pas un skill local).
+    private var isRemotelyInstallable: Bool {
+        switch skill.origin {
+        case .official, .community: return true
+        case .local:                return false
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -60,7 +68,7 @@ struct SkillDetailView: View {
                     Text("Géré par un plugin").font(.caption).foregroundStyle(.tertiary)
                 }
             }
-        } else if case .official = skill.origin {
+        } else if isRemotelyInstallable {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Installer dans", selection: $scope) {
                     Text("Ce projet").tag(Skill.InstalledScope.project)
@@ -122,17 +130,20 @@ struct SkillDetailView: View {
     // MARK: - Chargement
 
     private func loadDetail() async {
-        // L'aperçu distant ne vaut que pour les skills officiels ; un skill déjà
-        // installé se lit sur disque.
-        if case .official = skill.origin {
-            async let manifestTask = SkillInstaller.officialManifest(named: skill.name)
-            async let filesTask = SkillInstaller.officialFiles(named: skill.name)
+        switch skill.origin {
+        case .official, .community:
+            // Aperçu distant à la révision exacte (SKILL.md + repérage scripts).
+            async let manifestTask = SkillInstaller.manifest(for: skill)
+            async let filesTask = SkillInstaller.files(for: skill)
             manifest = await manifestTask
             files = await filesTask ?? []
-        } else if let scope = skill.installed {
-            let dir = SkillInstaller.destinationRoot(scope: scope, projectDirectory: model.projectDirectoryForPreview)
-                .appendingPathComponent(skill.name)
-            manifest = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8)
+        case .local:
+            // Skill purement local : on le lit sur disque.
+            if let scope = skill.installed {
+                let dir = SkillInstaller.destinationRoot(scope: scope, projectDirectory: model.projectDirectoryForPreview)
+                    .appendingPathComponent(skill.name)
+                manifest = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8)
+            }
         }
         isLoading = false
     }
