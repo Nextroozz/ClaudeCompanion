@@ -42,6 +42,12 @@ struct WorkspaceTile: Equatable, Identifiable {
         self.bundleID = bundleID
         self.weight = max(weight, 0.0001) // un poids nul ferait disparaître la tuile
     }
+
+    /// bundleID sentinelle du compagnon lui-même. Sa fenêtre n'est pas pilotée
+    /// par l'API Accessibilité (c'est la nôtre) mais directement via NSWindow :
+    /// `WindowManager` teste `isCompanion` pour choisir la bonne voie.
+    static let companionBundleID = "app.claudecompanion.self"
+    var isCompanion: Bool { bundleID == Self.companionBundleID }
 }
 
 /// Un workspace : des tuiles, un axe, une largeur minimale par tuile.
