@@ -8,7 +8,6 @@ struct HeaderBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
     @State private var showsFolderPicker = false
     @State private var showsAccount = false
-    @State private var showsWorkspace = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -54,19 +53,6 @@ struct HeaderBarView: View {
                   : "Détaché : se comporte comme une fenêtre normale")
 
             dockMenu
-
-            Button {
-                showsWorkspace.toggle()
-            } label: {
-                Image(systemName: "rectangle.3.group")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(windowManager.workspaceActive ? Color.accentColor : .primary.opacity(0.85))
-            .help("Workspace : tuiler plusieurs apps et les maximiser ensemble")
-            .popover(isPresented: $showsWorkspace, arrowEdge: .bottom) {
-                WorkspaceView()
-                    .environmentObject(windowManager)
-            }
         }
         .imageScale(.medium)
         .foregroundStyle(.primary.opacity(0.85))
