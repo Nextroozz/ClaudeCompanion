@@ -6,9 +6,11 @@ import UniformTypeIdentifiers
 struct HeaderBarView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @EnvironmentObject private var windowManager: WindowManager
+    @EnvironmentObject private var sessionMeta: SessionMetadataStore
     @State private var showsFolderPicker = false
     @State private var showsAccount = false
     @State private var showsSkills = false
+    @State private var showsSessions = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -165,15 +167,34 @@ struct HeaderBarView: View {
 
     private var sessionHistoryMenu: some View {
         Menu {
+            Button {
+                showsSessions = true
+            } label: {
+                Label("Gérer les sessions…", systemImage: "slider.horizontal.3")
+            }
+            if !viewModel.sessions.isEmpty { Divider() }
+
             if viewModel.sessions.isEmpty {
                 Text("Aucune session pour ce projet")
             }
             ForEach(viewModel.sessions) { session in
+                let m = sessionMeta.metadata(for: session.id)
                 Button {
                     viewModel.loadSession(session)
                 } label: {
-                    Text(session.title)
-                    Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    // La pastille de couleur passe par un SF Symbol teinté : un
+                    // Menu SwiftUI n'affiche pas de formes libres dans ses items.
+                    if let color = m.color {
+                        Label {
+                            Text(m.name ?? session.title)
+                            Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                        } icon: {
+                            Image(systemName: "circle.fill").foregroundStyle(color.color)
+                        }
+                    } else {
+                        Text(m.name ?? session.title)
+                        Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    }
                 }
             }
         } label: {
@@ -182,7 +203,12 @@ struct HeaderBarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Reprendre une session précédente (historique ~/.claude/projects)")
+        .help("Reprendre ou gérer une session (renommer, colorer, grouper)")
+        .sheet(isPresented: $showsSessions) {
+            SessionsView()
+                .environmentObject(viewModel)
+                .environmentObject(sessionMeta)
+        }
     }
 
     private var permissionMenu: some View {

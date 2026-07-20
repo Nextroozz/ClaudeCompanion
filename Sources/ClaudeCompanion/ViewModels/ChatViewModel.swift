@@ -301,6 +301,14 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Supprime une session. Si c'est celle affichée, on repart à neuf pour ne
+    /// pas rester sur un historique fantôme.
+    func deleteSession(_ session: SessionSummary) {
+        SessionHistoryService.deleteSession(at: session.fileURL)
+        if session.id == sessionID { newSession() }
+        Task { await refreshSessions() }
+    }
+
     /// Ajoute des fichiers (sélecteur ou glisser-déposer) au prochain envoi.
     func addAttachments(_ urls: [URL]) {
         for url in urls where !pendingAttachments.contains(url) {

@@ -46,12 +46,14 @@ struct ClaudeCompanionApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var windowManager = WindowManager()
+    @StateObject private var sessionMeta = SessionMetadataStore()
 
     var body: some Scene {
         WindowGroup {
             ChatView()
                 .environmentObject(viewModel)
                 .environmentObject(windowManager)
+                .environmentObject(sessionMeta)
                 // Le verre est le fond : on force un schéma sombre cohérent
                 // avec le material .hudWindow. Supprimez cette ligne pour
                 // suivre l'apparence système.

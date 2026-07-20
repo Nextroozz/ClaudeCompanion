@@ -94,6 +94,14 @@ enum SessionHistoryService {
         return truncatedTitle(firstUserText ?? "Session")
     }
 
+    /// Supprime le fichier .jsonl d'une session. Irréversible — l'appelant
+    /// confirme. Claude Code ne « possède » que le fichier ; rien d'autre à
+    /// nettoyer côté CLI.
+    @discardableResult
+    static func deleteSession(at fileURL: URL) -> Bool {
+        (try? FileManager.default.removeItem(at: fileURL)) != nil
+    }
+
     // MARK: - Chargement d'une session complète
 
     static func loadMessages(from fileURL: URL) -> [ChatMessage] {
