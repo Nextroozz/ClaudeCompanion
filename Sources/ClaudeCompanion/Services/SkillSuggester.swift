@@ -19,6 +19,31 @@ struct ProjectSignals: Equatable {
     var usesMCP = false                    // .mcp.json ou dépendance MCP
     var buildsSkills = false               // un SKILL.md vit déjà dans le projet
     var usesAnthropicSDK = false           // dépendance @anthropic-ai / anthropic
+    /// Langage dominant, exprimé en terme de recherche ("swift", "python"…).
+    /// C'est le repli qui rend les suggestions communautaires utiles sur
+    /// N'IMPORTE quel projet, pas seulement web/JS.
+    var primaryLanguage: String?
+}
+
+/// Extensions de CODE → terme de recherche. Sert à la fois à repérer la langue
+/// dominante et à formuler une requête GitHub. Les fichiers hors de cette table
+/// (.md, .json, .yml…) ne sont pas des langages et sont ignorés.
+enum CodeLanguage {
+    static let byExtension: [String: String] = [
+        "swift": "swift",
+        "ts": "typescript", "tsx": "typescript",
+        "js": "javascript", "jsx": "javascript", "mjs": "javascript",
+        "py": "python",
+        "rs": "rust",
+        "go": "golang",
+        "java": "java", "kt": "kotlin",
+        "rb": "ruby", "php": "php",
+        "cs": "csharp",
+        "cpp": "cpp", "cc": "cpp", "hpp": "cpp",
+        "c": "c", "h": "c",
+        "sh": "bash", "bash": "bash",
+        "lua": "lua", "dart": "dart", "ex": "elixir", "exs": "elixir",
+    ]
 }
 
 /// Un skill proposé, avec la raison — l'UI l'affiche pour que la suggestion soit
@@ -99,14 +124,11 @@ enum SkillSuggester {
         if signals.hasReact {
             return ("react component", "Projet React — skills de la communauté")
         }
-        if signals.fileExtensions.contains("py") {
-            return ("python", "Projet Python — skills de la communauté")
-        }
-        if signals.fileExtensions.contains("rs") {
-            return ("rust", "Projet Rust — skills de la communauté")
-        }
-        if signals.fileExtensions.contains("go") {
-            return ("golang", "Projet Go — skills de la communauté")
+        // Repli général : le langage dominant du projet, quel qu'il soit.
+        // C'est ce qui fait qu'un projet Swift, Java ou Rust obtient enfin des
+        // suggestions, là où l'ancienne liste codée en dur ne couvrait que JS/py.
+        if let language = signals.primaryLanguage {
+            return (language, "Projet \(language.capitalized) — skills de la communauté")
         }
         return nil
     }
@@ -139,7 +161,9 @@ enum SkillSuggester {
             }
         }
 
-        // Extensions présentes (profondeur 2) + repérage d'un SKILL.md.
+        // Extensions présentes (profondeur 2) + repérage d'un SKILL.md +
+        // décompte des fichiers de code pour dégager la langue dominante.
+        var languageCounts: [String: Int] = [:]
         if let enumerator = fm.enumerator(
             at: projectDirectory,
             includingPropertiesForKeys: nil,
@@ -152,9 +176,17 @@ enum SkillSuggester {
                 if enumerator.level > 2 { enumerator.skipDescendants(); continue }
                 if url.lastPathComponent == "SKILL.md" { signals.buildsSkills = true }
                 let ext = url.pathExtension.lowercased()
-                if !ext.isEmpty { signals.fileExtensions.insert(ext) }
+                guard !ext.isEmpty else { continue }
+                signals.fileExtensions.insert(ext)
+                if let language = CodeLanguage.byExtension[ext] {
+                    languageCounts[language, default: 0] += 1
+                }
             }
         }
+        // La langue la plus fréquente l'emporte ; à égalité, l'ordre
+        // alphabétique tranche pour rester déterministe (utile aux tests).
+        signals.primaryLanguage = languageCounts
+            .max { ($0.value, $1.key) < ($1.value, $0.key) }?.key
         return signals
     }
 }

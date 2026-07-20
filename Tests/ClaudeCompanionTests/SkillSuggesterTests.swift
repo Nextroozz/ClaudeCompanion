@@ -88,10 +88,32 @@ final class SkillSuggesterTests: XCTestCase {
         XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "mcp server")
     }
 
-    func testCommunityQueryFromFileExtension() {
+    /// Le repli langue rend les suggestions utiles sur N'IMPORTE quel projet —
+    /// le bug signalé : un projet Swift ne proposait rien faute de règle Swift.
+    func testCommunityQueryFallsBackToPrimaryLanguage() {
         var signals = ProjectSignals()
-        signals.fileExtensions = ["rs"]
-        XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "rust")
+        signals.primaryLanguage = "swift"
+        XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "swift")
+    }
+
+    /// Un framework l'emporte sur la simple langue : un projet React en
+    /// TypeScript cherche « react component », pas « typescript ».
+    func testFrameworkBeatsLanguage() {
+        var signals = ProjectSignals()
+        signals.hasReact = true
+        signals.primaryLanguage = "typescript"
+        XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "react component")
+    }
+
+    /// La détection retient la langue DOMINANTE (la plus fréquente).
+    func testDetectSignalsPicksDominantLanguage() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lang-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for i in 0..<5 { try "x".write(to: root.appendingPathComponent("f\(i).swift"), atomically: true, encoding: .utf8) }
+        try "x".write(to: root.appendingPathComponent("one.py"), atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(SkillSuggester.detectSignals(in: root).primaryLanguage, "swift")
     }
 
     /// Sans signal exploitable, pas de recherche communautaire — on n'invente
