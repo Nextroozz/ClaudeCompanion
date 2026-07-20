@@ -76,4 +76,27 @@ final class SkillSuggesterTests: XCTestCase {
         XCTAssertEqual(SkillSuggester.suggestions(for: signals, catalog: catalog, installed: []).first?.reason,
                        "Serveur MCP dans le projet")
     }
+
+    // MARK: - Requête communautaire (recherche GitHub selon le projet)
+
+    /// Le signal le plus spécifique gagne : MCP passe avant React même si les
+    /// deux sont présents — on cherche ce qui caractérise le mieux le projet.
+    func testCommunityQueryPrefersMostSpecificSignal() {
+        var signals = ProjectSignals()
+        signals.usesMCP = true
+        signals.hasReact = true
+        XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "mcp server")
+    }
+
+    func testCommunityQueryFromFileExtension() {
+        var signals = ProjectSignals()
+        signals.fileExtensions = ["rs"]
+        XCTAssertEqual(SkillSuggester.communityQuery(for: signals)?.query, "rust")
+    }
+
+    /// Sans signal exploitable, pas de recherche communautaire — on n'invente
+    /// pas une requête au hasard.
+    func testCommunityQueryNilWhenNoSignal() {
+        XCTAssertNil(SkillSuggester.communityQuery(for: ProjectSignals()))
+    }
 }

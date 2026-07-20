@@ -69,14 +69,52 @@ enum SkillSearchService {
         }
 
         // Lecture des frontmatters en parallèle → Skills communautaires.
-        return await withTaskGroup(of: Skill?.self) { group in
+        let skills = await withTaskGroup(of: Skill?.self) { group -> [Skill] in
             for source in sources {
                 group.addTask { await skill(from: source) }
             }
-            var skills: [Skill] = []
-            for await skill in group { if let skill { skills.append(skill) } }
-            return skills.sorted { $0.name < $1.name }
+            var result: [Skill] = []
+            for await skill in group { if let skill { result.append(skill) } }
+            return result
         }
+
+        // Étoiles des dépôts (un appel par dépôt distinct, en parallèle) : un
+        // signal de qualité pour trier et afficher. Le tri place les plus
+        // populaires en tête — c'est ce que l'utilisateur veut voir d'abord.
+        let starred = await attachStars(to: skills, token: token)
+        return starred.sorted { ($0.stars ?? -1, $1.name) > ($1.stars ?? -1, $0.name) }
+    }
+
+    /// Récupère le nombre d'étoiles de chaque dépôt distinct et le rattache.
+    private static func attachStars(to skills: [Skill], token: String) async -> [Skill] {
+        let repos = Set(skills.compactMap { skill -> String? in
+            if case .community(let s) = skill.origin { return s.repo }
+            return nil
+        })
+        let stars = await withTaskGroup(of: (String, Int?).self) { group -> [String: Int] in
+            for repo in repos {
+                group.addTask { (repo, await repoStars(repo, token: token)) }
+            }
+            var map: [String: Int] = [:]
+            for await (repo, count) in group { if let count { map[repo] = count } }
+            return map
+        }
+        return skills.map { skill in
+            guard case .community(let s) = skill.origin else { return skill }
+            var copy = skill
+            copy.stars = stars[s.repo]
+            return copy
+        }
+    }
+
+    /// Étoiles d'un dépôt via l'API repos.
+    private static func repoStars(_ repo: String, token: String) async -> Int? {
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)") else { return nil }
+        guard let data = await GitHubFetch.get(url, token: token) else { return nil }
+        struct Repo: Decodable { let stargazersCount: Int }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? decoder.decode(Repo.self, from: data))?.stargazersCount
     }
 
     /// Frontmatter d'un SKILL.md communautaire → Skill.

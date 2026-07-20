@@ -14,6 +14,9 @@ final class SkillsViewModel: ObservableObject {
     @Published private(set) var installed: [Skill] = []
     @Published private(set) var catalog: [Skill] = []          // officiel, drapeau installé posé
     @Published private(set) var suggestions: [SkillSuggestion] = []
+    /// Suggestions issues de GitHub (recherche selon le projet), triées par
+    /// étoiles. Séparées des officielles : provenance non vérifiée.
+    @Published private(set) var communitySuggestions: [SkillSuggestion] = []
     @Published private(set) var isRefreshing = false
     @Published var errorText: String?
     /// Nom du skill dont une install/désinstall est en cours (désactive son bouton).
@@ -57,6 +60,22 @@ final class SkillsViewModel: ObservableObject {
 
         // Disponibilité de la recherche GitHub (localise `gh` hors MainActor).
         searchAvailable = await Task.detached { GitHubAuth.isAvailable }.value
+
+        await refreshCommunitySuggestions()
+    }
+
+    /// Cherche sur GitHub des skills adaptés au projet (signal le plus fort) et
+    /// garde les 3 mieux notés, hors déjà installés. Silencieux si `gh` manque.
+    private func refreshCommunitySuggestions() async {
+        guard searchAvailable else { return }
+        let signals = SkillSuggester.detectSignals(in: projectDirectory)
+        guard let ask = SkillSuggester.communityQuery(for: signals),
+              let results = try? await SkillSearchService.search(ask.query) else { return }
+
+        communitySuggestions = results
+            .filter { !installedNames.contains($0.name) }
+            .prefix(3)
+            .map { SkillSuggestion(skill: $0, reason: ask.reason) }
     }
 
     // MARK: - Recherche GitHub (Phase 2)

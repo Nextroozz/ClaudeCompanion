@@ -85,6 +85,32 @@ enum SkillSuggester {
         return result
     }
 
+    /// Requête GitHub dérivée du signal projet le PLUS fort, pour aller chercher
+    /// des skills communautaires pertinents (Phase 2). Pur : le ViewModel lance
+    /// la recherche. Un seul terme, du plus spécifique au plus général — inutile
+    /// de noyer l'utilisateur sous dix recherches.
+    static func communityQuery(for signals: ProjectSignals) -> (query: String, reason: String)? {
+        if signals.usesMCP {
+            return ("mcp server", "Serveur MCP — skills de la communauté")
+        }
+        if signals.usesAnthropicSDK {
+            return ("anthropic claude api", "API Claude — skills de la communauté")
+        }
+        if signals.hasReact {
+            return ("react component", "Projet React — skills de la communauté")
+        }
+        if signals.fileExtensions.contains("py") {
+            return ("python", "Projet Python — skills de la communauté")
+        }
+        if signals.fileExtensions.contains("rs") {
+            return ("rust", "Projet Rust — skills de la communauté")
+        }
+        if signals.fileExtensions.contains("go") {
+            return ("golang", "Projet Go — skills de la communauté")
+        }
+        return nil
+    }
+
     // MARK: - Détection (lecture disque)
 
     /// Parcourt le projet en surface (profondeur limitée : un scan récursif

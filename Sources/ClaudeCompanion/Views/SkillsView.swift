@@ -93,14 +93,32 @@ struct SkillsView: View {
 
     private var suggestedList: some View {
         Group {
-            if model.suggestions.isEmpty {
+            if model.suggestions.isEmpty && model.communitySuggestions.isEmpty {
                 emptyState("sparkles",
                            "Rien à suggérer pour l'instant",
                            "Les propositions se basent sur le contenu du projet ouvert.")
             } else {
-                List(model.suggestions) { suggestion in
-                    NavigationLink(value: suggestion.skill) {
-                        SkillRow(skill: suggestion.skill, model: model, reason: suggestion.reason)
+                List {
+                    if !model.suggestions.isEmpty {
+                        Section("Officiels") {
+                            ForEach(model.suggestions) { suggestion in
+                                NavigationLink(value: suggestion.skill) {
+                                    SkillRow(skill: suggestion.skill, model: model, reason: suggestion.reason)
+                                }
+                            }
+                        }
+                    }
+                    if !model.communitySuggestions.isEmpty {
+                        Section {
+                            ForEach(model.communitySuggestions) { suggestion in
+                                NavigationLink(value: suggestion.skill) {
+                                    SkillRow(skill: suggestion.skill, model: model, reason: suggestion.reason)
+                                }
+                            }
+                        } header: {
+                            Label("Communauté — non vérifiés", systemImage: "exclamationmark.shield")
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -219,11 +237,24 @@ struct SkillRow: View {
     @ObservedObject var model: SkillsViewModel
     var reason: String?
 
+    /// « 1234 » → « 1.2k » : lisible d'un coup d'œil dans une ligne étroite.
+    static func formatStars(_ count: Int) -> String {
+        count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             SkillBadge(skill: skill)
             VStack(alignment: .leading, spacing: 2) {
-                Text(skill.name).font(.callout.weight(.medium))
+                HStack(spacing: 6) {
+                    Text(skill.name).font(.callout.weight(.medium))
+                    if let stars = skill.stars {
+                        Label(Self.formatStars(stars), systemImage: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
                 if let reason {
                     Text(reason).font(.caption).foregroundStyle(Color.accentColor)
                 }

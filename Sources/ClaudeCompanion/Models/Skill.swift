@@ -22,6 +22,9 @@ struct Skill: Identifiable, Equatable, Hashable, Sendable {
     let origin: Origin
     /// Non-nil si le skill est présent localement — porte le périmètre.
     var installed: InstalledScope?
+    /// Étoiles du dépôt d'origine (skills communautaires) — signal de qualité,
+    /// affiché et utilisé pour trier. nil = inconnu ou hors GitHub.
+    var stars: Int?
 
     /// Provenance connue, pour le badge de confiance de l'UI.
     enum Origin: Equatable, Hashable, Sendable {
