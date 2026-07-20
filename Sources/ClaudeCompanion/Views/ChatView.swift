@@ -57,15 +57,18 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // VStack et NON LazyVStack : le Lazy met en cache la hauteur
-                // d'une ligne à sa première apparition et ne la réévalue pas
-                // quand son contenu grandit. Or c'est précisément ce qui arrive
-                // ici — une bulle s'allonge à chaque delta —, d'où des réponses
-                // longues tronquées, que seul un passage sur une autre session
-                // (qui détruit les vues) réparait. La paresse coûtait plus
-                // qu'elle ne rapportait : un fil de conversation reste court,
-                // et SwiftUI ne recalcule de toute façon que la bulle modifiée.
-                VStack(alignment: .leading, spacing: 16) {
+                // LazyVStack : sur une longue session, un VStack disposerait
+                // TOUTES les bulles à chaque bump de révision (plusieurs fois par
+                // seconde pendant le streaming) → l'UI rame. Le Lazy ne dispose
+                // que les bulles visibles.
+                //
+                // On avait un temps soupçonné le Lazy de tronquer les réponses
+                // longues (hauteur sous-mesurée) et on était repassé en VStack ;
+                // la vraie cause était le `.fixedSize(vertical:)` manquant dans
+                // MarkdownView, depuis corrigé. Lazy + fixedSize = hauteur juste
+                // ET performance. La régression « ça bug quand la session
+                // s'allonge » venait de ce VStack.
+                LazyVStack(alignment: .leading, spacing: 16) {
                     if viewModel.messages.isEmpty {
                         emptyState
                     }
