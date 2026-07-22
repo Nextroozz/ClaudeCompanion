@@ -25,12 +25,20 @@ struct MarkdownView: View {
                 .lineSpacing(2.5)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Sans ceci, un Text multi-lignes dans un ScrollView voit sa
+                // hauteur SOUS-mesurée pendant le streaming : les longues
+                // réponses étaient coupées, et seul un rechargement (vues
+                // reconstruites) les réparait. fixedSize force la hauteur
+                // idéale — celle qui affiche toutes les lignes.
+                .fixedSize(horizontal: false, vertical: true)
 
         case .heading(let level, let text):
             Text(inline(text))
                 .font(headingFont(level))
                 .padding(.top, level <= 2 ? 4 : 2)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
 
         case .bulletList(let items):
             listView(items) { _ in "•" }
@@ -72,6 +80,10 @@ struct MarkdownView: View {
                     Text(inline(item))
                         .font(.callout)
                         .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Même raison que les paragraphes : une puce longue
+                        // s'enroule sur plusieurs lignes et serait tronquée.
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

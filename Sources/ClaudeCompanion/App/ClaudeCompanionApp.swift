@@ -46,12 +46,14 @@ struct ClaudeCompanionApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var windowManager = WindowManager()
+    @StateObject private var sessionMeta = SessionMetadataStore()
 
     var body: some Scene {
         WindowGroup {
             ChatView()
                 .environmentObject(viewModel)
                 .environmentObject(windowManager)
+                .environmentObject(sessionMeta)
                 // Le verre est le fond : on force un schéma sombre cohérent
                 // avec le material .hudWindow. Supprimez cette ligne pour
                 // suivre l'apparence système.
@@ -72,6 +74,13 @@ struct ClaudeCompanionApp: App {
                     NotificationCenter.default.post(name: .dockToIDERequested, object: nil)
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                // Pas ⌃⌘F : ce raccourci est le plein écran natif du système,
+                // que macOS interdit de partager entre deux apps.
+                Button("Maximiser la paire") {
+                    NotificationCenter.default.post(name: .maximizePairRequested, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             }
         }
     }

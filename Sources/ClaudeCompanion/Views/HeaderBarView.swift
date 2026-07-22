@@ -6,35 +6,32 @@ import UniformTypeIdentifiers
 struct HeaderBarView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @EnvironmentObject private var windowManager: WindowManager
+    @EnvironmentObject private var sessionMeta: SessionMetadataStore
     @State private var showsFolderPicker = false
-    @State private var showsUsage = false
+    @State private var showsAccount = false
+    @State private var showsSkills = false
+    @State private var showsSessions = false
 
     var body: some View {
         HStack(spacing: 8) {
-            folderButton
-            if let model = viewModel.modelName {
-                Text(ModelNames.short(model))
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.08), in: Capsule())
-                    .help("Modèle de la session en cours")
-            }
-
-            Spacer(minLength: 8)
-
+            // Compte (en haut à gauche) : identité, connexion/déconnexion, usage.
             Button {
-                showsUsage.toggle()
+                showsAccount.toggle()
             } label: {
-                Image(systemName: "chart.bar.fill")
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 16))
             }
             .buttonStyle(.plain)
-            .help("Usage et coûts estimés (journaux locaux)")
-            .popover(isPresented: $showsUsage, arrowEdge: .bottom) {
-                UsageView()
+            .help("Compte, connexion et usage")
+            .popover(isPresented: $showsAccount, arrowEdge: .bottom) {
+                AccountView()
                     .environmentObject(viewModel)
             }
+
+            folderButton
+            modelMenu
+
+            Spacer(minLength: 8)
 
             sessionHistoryMenu
 
@@ -49,6 +46,17 @@ struct HeaderBarView: View {
             permissionMenu
 
             Button {
+                showsSkills.toggle()
+            } label: {
+                Image(systemName: "puzzlepiece.extension")
+            }
+            .buttonStyle(.plain)
+            .help("Skills : découvrir, suggérer et installer")
+            .sheet(isPresented: $showsSkills) {
+                SkillsView(projectDirectory: viewModel.projectDirectory)
+            }
+
+            Button {
                 windowManager.isPinned.toggle()
             } label: {
                 Image(systemName: windowManager.isPinned ? "pin.fill" : "pin.slash")
@@ -58,13 +66,7 @@ struct HeaderBarView: View {
                   ? "Épinglé : flotte au-dessus de l'IDE (cliquer pour détacher)"
                   : "Détaché : se comporte comme une fenêtre normale")
 
-            Button {
-                NotificationCenter.default.post(name: .dockToIDERequested, object: nil)
-            } label: {
-                Image(systemName: "rectangle.righthalf.inset.filled.arrow.right")
-            }
-            .buttonStyle(.plain)
-            .help("Ancrer à droite de \(windowManager.dockTargetAppName) (⌘⇧D)")
+            dockMenu
         }
         .imageScale(.medium)
         .foregroundStyle(.primary.opacity(0.85))
@@ -102,17 +104,97 @@ struct HeaderBarView: View {
         .help("Dossier de projet : \(viewModel.projectDirectory.path)")
     }
 
+    /// Sélecteur de modèle et d'effort de raisonnement, appliqués dès le
+    /// prochain message (`--model` / `--effort`). La liste des modèles vient
+    /// de l'API Anthropic — les nouvelles versions apparaissent toutes seules.
+    private var modelMenu: some View {
+        Menu {
+            Picker("Modèle", selection: $viewModel.selectedModel) {
+                Text("Défaut").tag(String?.none)
+                ForEach(viewModel.availableModels) { model in
+                    Text(model.displayName).tag(String?.some(model.id))
+                }
+            }
+            .pickerStyle(.inline)
+
+            Picker("Effort de raisonnement", selection: $viewModel.selectedEffort) {
+                ForEach(EffortChoice.all, id: \.value) { choice in
+                    Text(choice.label).tag(choice.value)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "cpu")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                Text(modelBadgeText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let effortLabel = EffortChoice.label(for: viewModel.selectedEffort),
+                   viewModel.selectedEffort != nil {
+                    Text(effortLabel.lowercased())
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.white.opacity(0.08), in: Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Modèle et effort de raisonnement pour les prochains messages")
+    }
+
+    /// Nom affiché : le choix explicite s'il existe, sinon le modèle réellement
+    /// utilisé par la session, sinon « Auto ».
+    private var modelBadgeText: String {
+        if let selected = viewModel.selectedModel {
+            return viewModel.availableModels.first { $0.id == selected }?.displayName
+                ?? ModelNames.short(selected)
+        }
+        if let model = viewModel.modelName {
+            return ModelNames.short(model)
+        }
+        return "Auto"
+    }
+
     private var sessionHistoryMenu: some View {
         Menu {
+            Button {
+                showsSessions = true
+            } label: {
+                Label("Gérer les sessions…", systemImage: "slider.horizontal.3")
+            }
+            if !viewModel.sessions.isEmpty { Divider() }
+
             if viewModel.sessions.isEmpty {
                 Text("Aucune session pour ce projet")
             }
             ForEach(viewModel.sessions) { session in
+                let m = sessionMeta.metadata(for: session.id)
                 Button {
                     viewModel.loadSession(session)
                 } label: {
-                    Text(session.title)
-                    Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    // La pastille de couleur passe par un SF Symbol teinté : un
+                    // Menu SwiftUI n'affiche pas de formes libres dans ses items.
+                    if let color = m.color {
+                        Label {
+                            Text(m.name ?? session.title)
+                            Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                        } icon: {
+                            Image(systemName: "circle.fill").foregroundStyle(color.color)
+                        }
+                    } else {
+                        Text(m.name ?? session.title)
+                        Text(session.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    }
                 }
             }
         } label: {
@@ -121,7 +203,12 @@ struct HeaderBarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Reprendre une session précédente (historique ~/.claude/projects)")
+        .help("Reprendre ou gérer une session (renommer, colorer, grouper)")
+        .sheet(isPresented: $showsSessions) {
+            SessionsView()
+                .environmentObject(viewModel)
+                .environmentObject(sessionMeta)
+        }
     }
 
     private var permissionMenu: some View {
@@ -142,4 +229,60 @@ struct HeaderBarView: View {
         .help("Mode de permission des outils en exécution headless")
     }
 
+    // MARK: - Ancrage IDE
+
+    /// Menu d'ancrage. La liste vient de `windowManager.dockableApps`, publiée
+    /// et recalculée sur événement : un calcul fait ici serait figé au moment
+    /// où SwiftUI construit le menu, et un IDE lancé après ne s'afficherait pas.
+    private var dockMenu: some View {
+        Menu {
+            if let docked = windowManager.dockedApp {
+                Section("Ancré à \(docked.localizedName ?? "?")") {
+                    Button("Maximiser la paire") { windowManager.maximizePair() }
+                    Button("Détacher") { windowManager.undock() }
+                }
+            }
+
+            Picker("Côté", selection: Binding(
+                get: { windowManager.dockSide },
+                set: { windowManager.dockSide = $0 }
+            )) {
+                ForEach(DockSide.allCases, id: \.self) { side in
+                    Text(side.label).tag(side)
+                }
+            }
+            .pickerStyle(.inline)
+
+            Section("Ancrer à…") {
+                if windowManager.dockableApps.isEmpty {
+                    Text("Aucune app avec fenêtre")
+                } else {
+                    ForEach(windowManager.dockableApps, id: \.processIdentifier) { app in
+                        Button {
+                            windowManager.dock(to: app)
+                        } label: {
+                            // L'icône est indispensable : VSCode s'annonce
+                            // « Code » (son localizedName), nom sous lequel on
+                            // ne le reconnaît pas. L'icône lève l'ambiguïté.
+                            if let icon = app.icon {
+                                Image(nsImage: icon)
+                            }
+                            Text(app.localizedName ?? "?")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: windowManager.isDocked
+                  ? "rectangle.lefthalf.inset.filled.arrow.left"
+                  : "rectangle.righthalf.inset.filled.arrow.right")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(windowManager.isDocked ? Color.accentColor : .primary.opacity(0.85))
+        .help(windowManager.isDocked
+              ? "Ancré à \(windowManager.dockedApp?.localizedName ?? "?") — les deux fenêtres bougent ensemble"
+              : "Ancrer à un IDE : l'IDE rétrécit, le compagnon s'y colle (⌘⇧D)")
+    }
 }

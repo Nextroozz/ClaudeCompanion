@@ -24,6 +24,8 @@ struct CLIOptions: Sendable {
     let resumeSessionID: String?
     let permissionMode: String
     let model: String?
+    /// Niveau d'effort de raisonnement (--effort low|medium|high|xhigh|max).
+    let effort: String?
     let includePartialMessages: Bool
 }
 
@@ -212,6 +214,9 @@ enum ClaudeCLIService {
         args += ["--permission-mode", options.permissionMode]
         if let model = options.model {
             args += ["--model", model]
+        }
+        if let effort = options.effort {
+            args += ["--effort", effort]
         }
         return args
     }
