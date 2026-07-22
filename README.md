@@ -32,7 +32,7 @@ Keep your workflow organized:
 
 ## 📸 See it in Action
 
-*[Drop your video `export-1784064862226.mp4` here via GitHub's web interface]*
+https://youtu.be/zrhYFAH-d3c
 
 ## 🛠️ Getting Started
 
