@@ -32,7 +32,7 @@ Keep your workflow organized:
 
 ## 📸 See it in Action
 
-https://youtu.be/zrhYFAH-d3c
+[![Aperçu de ClaudeCompanion](https://img.youtube.com/vi/zrhYFAH-d3c/maxresdefault.jpg)](https://youtu.be/zrhYFAH-d3c)
 
 ## 🛠️ Getting Started
 
