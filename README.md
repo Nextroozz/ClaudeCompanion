@@ -44,4 +44,22 @@ Keep your workflow organized:
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/Nextroozz/ClaudeCompanion.git](https://github.com/Nextroozz/ClaudeCompanion.git)
+   git clone https://github.com/Nextroozz/ClaudeCompanion.git
+   ```
+2. Navigate to the project directory:
+   ```bash
+   cd ClaudeCompanion
+   ```
+3. Run the app immediately via Swift package manager:
+   ```bash
+   swift run
+   ```
+   *Note: For a fully distributable `.app` bundle, open the `Package.swift` in Xcode, build the macOS App target, and drag it to your Applications folder.*
+
+## 🤝 Contributing
+
+Feedback, bug reports, and pull requests are highly appreciated! Since this is a native macOS app, any ideas on how to further improve the SwiftUI architecture or enhance the "Liquid Glass" rendering are welcome.
+
+## 📄 License
+
+This project is open-source and available under the MIT License.
