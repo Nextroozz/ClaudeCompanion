@@ -1,4 +1,4 @@
-# ✨ ClaudeCompanion
+# ✨ ClaudeCompanion v0.1.0-beta
 
 **A 100% Native SwiftUI Companion for Claude Code CLI.**
 
